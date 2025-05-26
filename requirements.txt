@@ -2,3 +2,4 @@ flask
 spyne
 gunicorn
 lxml
+requests
