@@ -23,18 +23,26 @@ soap_app = Application(
 
 # Wrap with WSGI application
 wsgi_app = WsgiApplication(soap_app)
+@app.route("/hello")
+def index():
+    return "SOAP Service is running. Use a SOAP client to POST to /"
 
 # Flask route to handle SOAP requests
-@app.route("/", methods=['POST', 'GET'])
+@app.route("/", methods=["GET", "POST"])
 def soap_service():
-    def start_response(status, headers):
-        response.status = status
-        for header in headers:
-            response.headers[header[0]] = header[1]
+    response = []
 
-    response = Response()
-    response.data = wsgi_app(request.environ, start_response)
-    return response
+    def start_response(status, headers):
+        nonlocal response
+        response.append(("status", status))
+        response.append(("headers", headers))
+
+    result = wsgi_app(request.environ, start_response)
+    status = dict(response).get("status", "500 INTERNAL SERVER ERROR")
+    headers = dict(response).get("headers", [])
+
+    return Response(result, status=status, headers=dict(headers))
+
 
 # Entry point
 if __name__ == "__main__":
