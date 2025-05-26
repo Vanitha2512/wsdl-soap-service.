@@ -3,18 +3,14 @@ from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
 from flask import Flask, request, Response, render_template_string
 import os
-import requests
 
-# Define SOAP Service
+# SOAP service class
 class HelloService(ServiceBase):
     @rpc(Unicode, _returns=Unicode)
     def say_hello(ctx, name):
         return f"Hello, {name}!"
 
-# Create Flask app
-app = Flask(__name__)
-
-# SOAP App
+# Spyne SOAP application
 soap_app = Application(
     [HelloService],
     tns='spyne.examples.hello',
@@ -23,72 +19,62 @@ soap_app = Application(
 )
 wsgi_app = WsgiApplication(soap_app)
 
-# HTML Template for main page
-HTML_TEMPLATE = """
+# Flask app
+app = Flask(__name__)
+
+# HTML form template
+HTML_FORM = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Baby's SOAP Hello Service 💖</title>
+    <title>Hello Baby</title>
+    <style>
+        body { font-family: Arial; text-align: center; margin-top: 100px; }
+        input[type="text"] { padding: 8px; font-size: 16px; }
+        input[type="submit"] { padding: 8px 16px; font-size: 16px; }
+        h1 { color: #007BFF; }
+    </style>
 </head>
-<body style="font-family: sans-serif; text-align: center; margin-top: 100px;">
-    <h2>🧼 SOAP Hello Service</h2>
-    <form method="POST">
+<body>
+    <h1>Say Hello 👋</h1>
+    <form method="post" action="/hello">
         <input type="text" name="name" placeholder="Enter your name" required />
-        <button type="submit">Say Hello</button>
+        <input type="submit" value="Say Hello" />
     </form>
     {% if result %}
-        <h3>{{ result }}</h3>
+        <h2>{{ result }}</h2>
     {% endif %}
 </body>
 </html>
 """
 
-# Show form and process form
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
+# Web form route
+@app.route("/hello", methods=["GET", "POST"])
+def hello_page():
     if request.method == "POST":
-        name = request.form.get("name", "")
-        # Create SOAP envelope
-        soap_request = f"""<?xml version="1.0" encoding="UTF-8"?>
-        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                          xmlns:hel="spyne.examples.hello">
-            <soapenv:Header/>
-            <soapenv:Body>
-                <hel:say_hello>
-                    <hel:name>{name}</hel:name>
-                </hel:say_hello>
-            </soapenv:Body>
-        </soapenv:Envelope>"""
-        headers = {"Content-Type": "text/xml"}
-        response = requests.post("http://localhost:10000/", data=soap_request, headers=headers)
-        # Extract the SOAP result (basic way)
-        start = response.text.find("<say_helloResult>")
-        end = response.text.find("</say_helloResult>")
-        if start != -1 and end != -1:
-            result = response.text[start + 17:end]
-        else:
-            result = "Something went wrong 😥"
+        name = request.form.get("name", "Baby")
+        result = f"Hello, {name}!"
+        return render_template_string(HTML_FORM, result=result)
+    return render_template_string(HTML_FORM, result=None)
 
-    return render_template_string(HTML_TEMPLATE, result=result)
+# SOAP endpoint
+@app.route("/", methods=["GET", "POST"])
+def soap_interface():
+    if request.method == "POST":
+        response = []
 
-# Handle raw SOAP POST requests (backend endpoint)
-@app.route("/soap", methods=["POST"])
-def soap_service():
-    response = []
+        def start_response(status, headers):
+            response.append(("status", status))
+            response.append(("headers", headers))
 
-    def start_response(status, headers):
-        nonlocal response
-        response.append(("status", status))
-        response.append(("headers", headers))
+        result = wsgi_app(request.environ, start_response)
+        status = dict(response).get("status", "500 INTERNAL SERVER ERROR")
+        headers = dict(response).get("headers", [])
 
-    result = wsgi_app(request.environ, start_response)
-    status = dict(response).get("status", "500 INTERNAL SERVER ERROR")
-    headers = dict(response).get("headers", [])
+        return Response(result, status=status, headers=dict(headers))
+    return "<h2>SOAP Service is running. POST a SOAP request to this URL.</h2>"
 
-    return Response(result, status=status, headers=dict(headers))
-
-# Main
+# Run locally
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
